@@ -86,7 +86,7 @@ public final class RowProcessingFunction
     }
 
     @Override
-    public Iterable<Tuple2<String, NamedAnalyzerResult>> call(final Iterator<InputRow> inputRowIterator)
+    public Iterator<Tuple2<String, NamedAnalyzerResult>> call(final Iterator<InputRow> inputRowIterator)
             throws Exception {
         logger.info("call(Iterator) invoked");
 
@@ -96,7 +96,7 @@ public final class RowProcessingFunction
 
         logger.info("call(Iterator) finished, returning {} results", analyzerResults.size());
 
-        return analyzerResults;
+        return analyzerResults.iterator();
     }
 
     @Override
@@ -106,7 +106,7 @@ public final class RowProcessingFunction
 
         final AnalysisJobBuilder jobBuilder = _sparkJobContext.getAnalysisJobBuilder();
 
-        configureComponentsBeforeBuilding(jobBuilder, partitionNumber.intValue());
+        configureComponentsBeforeBuilding(jobBuilder, partitionNumber);
 
         final AnalysisJob analysisJob = jobBuilder.toAnalysisJob();
 

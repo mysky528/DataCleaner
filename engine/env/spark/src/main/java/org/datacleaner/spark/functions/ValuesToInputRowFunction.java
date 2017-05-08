@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.apache.metamodel.schema.Table;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.sql.Row;
 import org.datacleaner.api.InputColumn;
 import org.datacleaner.api.InputRow;
 import org.datacleaner.data.MockInputRow;
@@ -39,7 +40,7 @@ import scala.Tuple2;
  *
  * It is assumed that the job is based on a single source {@link Table}.
  */
-public class ValuesToInputRowFunction implements Function<Tuple2<Object[], Long>, InputRow> {
+public class ValuesToInputRowFunction implements Function<Tuple2<Row, Long>, InputRow> {
 
     private static final long serialVersionUID = 1L;
 
@@ -50,8 +51,8 @@ public class ValuesToInputRowFunction implements Function<Tuple2<Object[], Long>
     }
 
     @Override
-    public InputRow call(final Tuple2<Object[], Long> tuple) throws Exception {
-        final Object[] values = tuple._1;
+    public InputRow call(final Tuple2<Row, Long> tuple) throws Exception {
+        final Row values = tuple._1;
         final Long rowNumber = tuple._2;
 
         final MockInputRow inputRow = new MockInputRow(rowNumber.intValue());
@@ -59,7 +60,7 @@ public class ValuesToInputRowFunction implements Function<Tuple2<Object[], Long>
         for (final InputColumn<?> sourceColumn : sourceColumns) {
             assert sourceColumn.isPhysicalColumn();
             final int columnIndex = sourceColumn.getPhysicalColumn().getColumnNumber();
-            final Object value = values[columnIndex];
+            final Object value = values.get(columnIndex);
             inputRow.put(sourceColumn, value);
         }
         return inputRow;

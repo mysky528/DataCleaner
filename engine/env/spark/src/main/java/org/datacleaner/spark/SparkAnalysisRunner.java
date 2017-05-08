@@ -19,29 +19,43 @@
  */
 package org.datacleaner.spark;
 
+import static org.apache.metamodel.csv.CsvConfiguration.DEFAULT_COLUMN_NAME_LINE;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import org.apache.metamodel.csv.CsvConfiguration;
 import org.apache.metamodel.fixedwidth.FixedWidthConfiguration;
+import org.apache.metamodel.schema.Column;
+import org.apache.metamodel.schema.ColumnType;
 import org.apache.metamodel.util.Resource;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.sql.DataFrameReader;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
 import org.datacleaner.api.AnalyzerResult;
 import org.datacleaner.api.InputRow;
 import org.datacleaner.connection.CsvDatastore;
 import org.datacleaner.connection.Datastore;
+import org.datacleaner.connection.DatastoreConnection;
 import org.datacleaner.connection.FixedWidthDatastore;
 import org.datacleaner.connection.JsonDatastore;
 import org.datacleaner.job.AnalysisJob;
 import org.datacleaner.job.runner.AnalysisResultFuture;
 import org.datacleaner.job.runner.AnalysisRunner;
 import org.datacleaner.spark.functions.AnalyzerResultReduceFunction;
-import org.datacleaner.spark.functions.CsvParserFunction;
 import org.datacleaner.spark.functions.ExtractAnalyzerResultFunction;
 import org.datacleaner.spark.functions.FixedWidthParserFunction;
-import org.datacleaner.spark.functions.JsonParserFunction;
 import org.datacleaner.spark.functions.RowProcessingFunction;
 import org.datacleaner.spark.functions.TuplesToTuplesFunction;
 import org.datacleaner.spark.functions.ValuesToInputRowFunction;
@@ -55,29 +69,11 @@ public class SparkAnalysisRunner implements AnalysisRunner {
     private static final Logger logger = LoggerFactory.getLogger(SparkAnalysisRunner.class);
 
     private final SparkJobContext _sparkJobContext;
-    private final JavaSparkContext _sparkContext;
-
-    private final Integer _minPartitions;
+    private final SparkSession _sparkSession;
 
     public SparkAnalysisRunner(final JavaSparkContext sparkContext, final SparkJobContext sparkJobContext) {
-        this(sparkContext, sparkJobContext, null);
-    }
-
-    public SparkAnalysisRunner(final JavaSparkContext sparkContext, final SparkJobContext sparkJobContext,
-            final Integer minPartitions) {
-        _sparkContext = sparkContext;
         _sparkJobContext = sparkJobContext;
-        if (minPartitions != null) {
-            if (minPartitions > 0) {
-                _minPartitions = minPartitions;
-            } else {
-                logger.warn("Minimum number of partitions needs to be a positive number, but specified: {}. "
-                        + "Disregarding the value and inferring the number of partitions automatically", minPartitions);
-                _minPartitions = null;
-            }
-        } else {
-            _minPartitions = null;
-        }
+        _sparkSession = SparkSession.builder().config(sparkContext.getConf()).getOrCreate();
     }
 
     @Override
@@ -158,61 +154,87 @@ public class SparkAnalysisRunner implements AnalysisRunner {
 
             final CsvConfiguration csvConfiguration = csvDatastore.getCsvConfiguration();
 
-            final JavaRDD<String> rawInput;
-            if (_minPartitions != null) {
-                rawInput = _sparkContext.textFile(datastorePath, _minPartitions);
-            } else {
-                rawInput = _sparkContext.textFile(datastorePath);
+            if (csvConfiguration.getColumnNameLineNumber() != DEFAULT_COLUMN_NAME_LINE) {
+                throw new IllegalStateException("Only default header line allowed");
             }
-            final JavaRDD<Object[]> parsedInput = rawInput.map(new CsvParserFunction(csvConfiguration));
 
-            JavaPairRDD<Object[], Long> zipWithIndex = parsedInput.zipWithIndex();
+            final DataFrameReader read = _sparkSession.read().option("quote", csvConfiguration.getQuoteChar())
+                    .option("escape", csvConfiguration.getEscapeChar()).option("sep", csvConfiguration.getEscapeChar())
+                    .option("encoding", csvConfiguration.getEncoding());
 
-            if (csvConfiguration.getColumnNameLineNumber() != CsvConfiguration.NO_COLUMN_NAME_LINE) {
-                zipWithIndex =
-                        zipWithIndex.filter(new SkipHeaderLineFunction(csvConfiguration.getColumnNameLineNumber()));
-            }
+            final JavaPairRDD<Row, Long> zipWithIndex = read.csv(datastorePath).javaRDD().zipWithIndex();
 
             return zipWithIndex.map(new ValuesToInputRowFunction(_sparkJobContext));
         } else if (datastore instanceof JsonDatastore) {
-            final JsonDatastore jsonDatastore = (JsonDatastore) datastore;
-            final String datastorePath = jsonDatastore.getResource().getQualifiedPath();
-            final JavaRDD<String> rawInput;
-            if (_minPartitions != null) {
-                rawInput = _sparkContext.textFile(datastorePath, _minPartitions);
-            } else {
-                rawInput = _sparkContext.textFile(datastorePath);
-            }
 
-            final JavaRDD<Object[]> parsedInput = rawInput.map(new JsonParserFunction(jsonDatastore));
-            final JavaPairRDD<Object[], Long> zipWithIndex = parsedInput.zipWithIndex();
-            return zipWithIndex.map(new ValuesToInputRowFunction(_sparkJobContext));
+            final JsonDatastore jsonDatastore = (JsonDatastore) datastore;
+
+            final String datastorePath = jsonDatastore.getResource().getQualifiedPath();
+            final Dataset<Row> rawInput =
+                    _sparkSession.read().schema(getSparkSchema(jsonDatastore)).json(datastorePath);
+
+            return rawInput.javaRDD().zipWithIndex().map(new ValuesToInputRowFunction(_sparkJobContext));
         } else if (datastore instanceof FixedWidthDatastore) {
 
             final FixedWidthDatastore fixedWidthDatastore = (FixedWidthDatastore) datastore;
 
-            final Resource resource = fixedWidthDatastore.getResource();
-            final String datastorePath = resource.getQualifiedPath();
             final FixedWidthConfiguration fixedWidthConfiguration = fixedWidthDatastore.getConfiguration();
-            final JavaRDD<String> rawInput;
-            if (_minPartitions != null) {
-                rawInput = _sparkContext.textFile(datastorePath, _minPartitions);
-            } else {
-                rawInput = _sparkContext.textFile(datastorePath);
-            }
-
-            final JavaRDD<Object[]> parsedInput = rawInput.map(new FixedWidthParserFunction(fixedWidthConfiguration));
-
-            JavaPairRDD<Object[], Long> zipWithIndex = parsedInput.zipWithIndex();
-
             if (fixedWidthConfiguration.getColumnNameLineNumber() != FixedWidthConfiguration.NO_COLUMN_NAME_LINE) {
-                zipWithIndex = zipWithIndex
-                        .filter(new SkipHeaderLineFunction(fixedWidthConfiguration.getColumnNameLineNumber()));
+                throw new IllegalStateException("Only default header line allowed");
             }
+
+            final String datastorePath = fixedWidthDatastore.getResource().getQualifiedPath();
+
+            final Dataset<String> rawInput = _sparkSession.read().textFile(datastorePath);
+
+            final JavaRDD<String[]> parsedInput = rawInput.javaRDD().map(new FixedWidthParserFunction(fixedWidthConfiguration));
+
+            final JavaPairRDD<Row, Long> zipWithIndex =
+                    parsedInput.map((Function<String[], Row>) record -> RowFactory.create((Object[]) record))
+                            .zipWithIndex();
 
             return zipWithIndex.map(new ValuesToInputRowFunction(_sparkJobContext));
         }
 
         throw new UnsupportedOperationException("Unsupported datastore type or configuration: " + datastore);
+    }
+
+    private StructType getSparkSchema(final Datastore datastore) {
+        final StructType schema;
+        try (DatastoreConnection openConnection = datastore.openConnection()) {
+            final Column[] columns = openConnection.getDataContext().getDefaultSchema().getTable(0).getColumns();
+            final List<StructField> fields = new ArrayList<>();
+            for (Column column : columns) {
+                fields.add(DataTypes
+                        .createStructField(column.getName(), mapMetaModelTypeToSparkType(column.getType()), true));
+            }
+            schema = DataTypes.createStructType(fields);
+        }
+        return schema;
+    }
+
+    private DataType mapMetaModelTypeToSparkType(final ColumnType columnType) {
+        switch (columnType.getSuperType()) {
+        case TIME_TYPE:
+            return DataTypes.TimestampType;
+        case BINARY_TYPE:
+            return DataTypes.BinaryType;
+        case BOOLEAN_TYPE:
+            return DataTypes.BooleanType;
+        case LITERAL_TYPE:
+            return DataTypes.StringType;
+        case NUMBER_TYPE:
+            if (columnType.getJavaEquivalentClass().equals(Short.class)) {
+                return DataTypes.ShortType;
+            } else if (columnType.getJavaEquivalentClass().equals(Integer.class)) {
+                return DataTypes.IntegerType;
+            } else if (columnType.getJavaEquivalentClass().equals(Double.class)) {
+                return DataTypes.DoubleType;
+            } else {
+                throw new IllegalStateException("Spark SQL does not accept columnType " + columnType);
+            }
+        default:
+            throw new IllegalStateException("Spark SQL does not accept columnType " + columnType);
+        }
     }
 }

@@ -23,7 +23,7 @@ import org.apache.metamodel.fixedwidth.FixedWidthConfiguration;
 import org.apache.metamodel.fixedwidth.FixedWidthLineParser;
 import org.apache.spark.api.java.function.Function;
 
-public class FixedWidthParserFunction implements Function<String, Object[]> {
+public class FixedWidthParserFunction implements Function<String, String[]> {
 
     private static final long serialVersionUID = 1L;
     private final FixedWidthConfiguration _fixedWidthConfiguration;
@@ -42,7 +42,7 @@ public class FixedWidthParserFunction implements Function<String, Object[]> {
     }
 
     @Override
-    public Object[] call(final String line) throws Exception {
+    public String[] call(final String line) throws Exception {
         final FixedWidthLineParser fixedWidthParser =
                 new FixedWidthLineParser(_fixedWidthConfiguration, _expectedLineLength, 0);
         return fixedWidthParser.parseLine(line);

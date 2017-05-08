@@ -20,10 +20,11 @@
 package org.datacleaner.spark;
 
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.sql.Row;
 
 import scala.Tuple2;
 
-public class SkipHeaderLineFunction implements Function<Tuple2<Object[], Long>, Boolean> {
+public class SkipHeaderLineFunction implements Function<Tuple2<Row, Long>, Boolean> {
 
     private static final long serialVersionUID = 1L;
     private final int _linesToSkip;
@@ -33,7 +34,7 @@ public class SkipHeaderLineFunction implements Function<Tuple2<Object[], Long>, 
     }
 
     @Override
-    public Boolean call(final Tuple2<Object[], Long> v1) throws Exception {
+    public Boolean call(final Tuple2<Row, Long> v1) throws Exception {
         return v1._2 >= _linesToSkip;
     }
 
