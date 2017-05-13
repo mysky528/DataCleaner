@@ -20,15 +20,20 @@
 package org.datacleaner.spark;
 
 import static org.apache.metamodel.csv.CsvConfiguration.DEFAULT_COLUMN_NAME_LINE;
+import static org.hsqldb.Library.getDatabaseProductName;
 
+import java.sql.DatabaseMetaData;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 
 import org.apache.metamodel.csv.CsvConfiguration;
 import org.apache.metamodel.fixedwidth.FixedWidthConfiguration;
+import org.apache.metamodel.jdbc.JdbcDataContext;
 import org.apache.metamodel.schema.Column;
-import org.apache.metamodel.schema.ColumnType;
+import org.apache.metamodel.schema.Table;
 import org.apache.metamodel.util.Resource;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -39,7 +44,6 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
@@ -49,6 +53,7 @@ import org.datacleaner.connection.CsvDatastore;
 import org.datacleaner.connection.Datastore;
 import org.datacleaner.connection.DatastoreConnection;
 import org.datacleaner.connection.FixedWidthDatastore;
+import org.datacleaner.connection.JdbcDatastore;
 import org.datacleaner.connection.JsonDatastore;
 import org.datacleaner.job.AnalysisJob;
 import org.datacleaner.job.runner.AnalysisResultFuture;
@@ -73,7 +78,7 @@ public class SparkAnalysisRunner implements AnalysisRunner {
 
     public SparkAnalysisRunner(final JavaSparkContext sparkContext, final SparkJobContext sparkJobContext) {
         _sparkJobContext = sparkJobContext;
-        _sparkSession = SparkSession.builder().config(sparkContext.getConf()).getOrCreate();
+        _sparkSession = SparkSession.builder().config(sparkContext.getConf()).enableHiveSupport().getOrCreate();
     }
 
     @Override
@@ -86,7 +91,9 @@ public class SparkAnalysisRunner implements AnalysisRunner {
         final AnalysisJob analysisJob = _sparkJobContext.getAnalysisJob();
         final Datastore datastore = analysisJob.getDatastore();
 
-        final JavaRDD<InputRow> inputRowsRDD = openSourceDatastore(datastore);
+        final Table table = analysisJob.getSourceColumns().get(0).getPhysicalColumn().getTable();
+
+        final JavaRDD<InputRow> inputRowsRDD = openSourceDatastore(datastore, table);
 
         final JavaPairRDD<String, NamedAnalyzerResult> namedAnalyzerResultsRDD;
         if (_sparkJobContext.getAnalysisJobBuilder().isDistributable()) {
@@ -145,7 +152,7 @@ public class SparkAnalysisRunner implements AnalysisRunner {
         return new SparkAnalysisResultFuture(results, _sparkJobContext);
     }
 
-    private JavaRDD<InputRow> openSourceDatastore(final Datastore datastore) {
+    private JavaRDD<InputRow> openSourceDatastore(final Datastore datastore, final Table table) {
         if (datastore instanceof CsvDatastore) {
             final CsvDatastore csvDatastore = (CsvDatastore) datastore;
             final Resource resource = csvDatastore.getResource();
@@ -175,7 +182,6 @@ public class SparkAnalysisRunner implements AnalysisRunner {
 
             return rawInput.javaRDD().zipWithIndex().map(new ValuesToInputRowFunction(_sparkJobContext));
         } else if (datastore instanceof FixedWidthDatastore) {
-
             final FixedWidthDatastore fixedWidthDatastore = (FixedWidthDatastore) datastore;
 
             final FixedWidthConfiguration fixedWidthConfiguration = fixedWidthDatastore.getConfiguration();
@@ -194,6 +200,28 @@ public class SparkAnalysisRunner implements AnalysisRunner {
                             .zipWithIndex();
 
             return zipWithIndex.map(new ValuesToInputRowFunction(_sparkJobContext));
+        } else if (datastore instanceof JdbcDatastore) {
+            final JdbcDatastore jdbcDatastore = (JdbcDatastore) datastore;
+            String productName = "";
+            try {
+                productName = jdbcDatastore.createConnection().getMetaData().getDatabaseProductName();
+            } catch (SQLException e) {
+                logger.warn("Could not read product name", e);
+                // Let's try to continue using normal MetaModel JDBC (It will probably fail, though)
+            }
+
+            final Dataset<Row> rawInput;
+            if (productName.equals(JdbcDataContext.DATABASE_PRODUCT_HIVE)) {
+                rawInput = _sparkSession.sql("SELECT * FROM " + table.getName());
+            } else {
+                final Properties properties = new Properties();
+                properties.setProperty("username", jdbcDatastore.getUsername());
+                properties.setProperty("password", jdbcDatastore.getPassword());
+
+                rawInput = _sparkSession.read().jdbc(jdbcDatastore.getJdbcUrl(), table.getName(), properties);
+            }
+
+            return rawInput.javaRDD().zipWithIndex().map(new ValuesToInputRowFunction(_sparkJobContext));
         }
 
         throw new UnsupportedOperationException("Unsupported datastore type or configuration: " + datastore);
@@ -206,35 +234,10 @@ public class SparkAnalysisRunner implements AnalysisRunner {
             final List<StructField> fields = new ArrayList<>();
             for (Column column : columns) {
                 fields.add(DataTypes
-                        .createStructField(column.getName(), mapMetaModelTypeToSparkType(column.getType()), true));
+                        .createStructField(column.getName(), DataTypes.StringType, true));
             }
             schema = DataTypes.createStructType(fields);
         }
         return schema;
-    }
-
-    private DataType mapMetaModelTypeToSparkType(final ColumnType columnType) {
-        switch (columnType.getSuperType()) {
-        case TIME_TYPE:
-            return DataTypes.TimestampType;
-        case BINARY_TYPE:
-            return DataTypes.BinaryType;
-        case BOOLEAN_TYPE:
-            return DataTypes.BooleanType;
-        case LITERAL_TYPE:
-            return DataTypes.StringType;
-        case NUMBER_TYPE:
-            if (columnType.getJavaEquivalentClass().equals(Short.class)) {
-                return DataTypes.ShortType;
-            } else if (columnType.getJavaEquivalentClass().equals(Integer.class)) {
-                return DataTypes.IntegerType;
-            } else if (columnType.getJavaEquivalentClass().equals(Double.class)) {
-                return DataTypes.DoubleType;
-            } else {
-                throw new IllegalStateException("Spark SQL does not accept columnType " + columnType);
-            }
-        default:
-            throw new IllegalStateException("Spark SQL does not accept columnType " + columnType);
-        }
     }
 }
