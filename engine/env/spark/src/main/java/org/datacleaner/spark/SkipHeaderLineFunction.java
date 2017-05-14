@@ -37,5 +37,4 @@ public class SkipHeaderLineFunction implements Function<Tuple2<Row, Long>, Boole
     public Boolean call(final Tuple2<Row, Long> v1) throws Exception {
         return v1._2 >= _linesToSkip;
     }
-
 }

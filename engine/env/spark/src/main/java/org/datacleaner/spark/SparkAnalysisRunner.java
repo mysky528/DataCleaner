@@ -20,9 +20,7 @@
 package org.datacleaner.spark;
 
 import static org.apache.metamodel.csv.CsvConfiguration.DEFAULT_COLUMN_NAME_LINE;
-import static org.hsqldb.Library.getDatabaseProductName;
 
-import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -78,7 +76,7 @@ public class SparkAnalysisRunner implements AnalysisRunner {
 
     public SparkAnalysisRunner(final JavaSparkContext sparkContext, final SparkJobContext sparkJobContext) {
         _sparkJobContext = sparkJobContext;
-        _sparkSession = SparkSession.builder().config(sparkContext.getConf()).enableHiveSupport().getOrCreate();
+        _sparkSession = SparkSession.builder().config(sparkContext.getConf()).getOrCreate();
     }
 
     @Override
@@ -165,9 +163,13 @@ public class SparkAnalysisRunner implements AnalysisRunner {
                 throw new IllegalStateException("Only default header line allowed");
             }
 
-            final DataFrameReader read = _sparkSession.read().option("quote", csvConfiguration.getQuoteChar())
-                    .option("escape", csvConfiguration.getEscapeChar()).option("sep", csvConfiguration.getEscapeChar())
-                    .option("encoding", csvConfiguration.getEncoding());
+
+            final DataFrameReader read =
+                    _sparkSession.read().option("quote", String.valueOf(csvConfiguration.getQuoteChar()))
+                            .option("escape", String.valueOf(csvConfiguration.getEscapeChar()))
+                            .option("sep", String.valueOf(csvConfiguration.getSeparatorChar()))
+                            .option("encoding", csvConfiguration.getEncoding()).option("header", true);
+
 
             final JavaPairRDD<Row, Long> zipWithIndex = read.csv(datastorePath).javaRDD().zipWithIndex();
 
@@ -185,19 +187,22 @@ public class SparkAnalysisRunner implements AnalysisRunner {
             final FixedWidthDatastore fixedWidthDatastore = (FixedWidthDatastore) datastore;
 
             final FixedWidthConfiguration fixedWidthConfiguration = fixedWidthDatastore.getConfiguration();
-            if (fixedWidthConfiguration.getColumnNameLineNumber() != FixedWidthConfiguration.NO_COLUMN_NAME_LINE) {
-                throw new IllegalStateException("Only default header line allowed");
-            }
 
             final String datastorePath = fixedWidthDatastore.getResource().getQualifiedPath();
 
             final Dataset<String> rawInput = _sparkSession.read().textFile(datastorePath);
 
-            final JavaRDD<String[]> parsedInput = rawInput.javaRDD().map(new FixedWidthParserFunction(fixedWidthConfiguration));
+            final JavaRDD<String[]> parsedInput =
+                    rawInput.javaRDD().map(new FixedWidthParserFunction(fixedWidthConfiguration));
 
-            final JavaPairRDD<Row, Long> zipWithIndex =
+            JavaPairRDD<Row, Long> zipWithIndex =
                     parsedInput.map((Function<String[], Row>) record -> RowFactory.create((Object[]) record))
                             .zipWithIndex();
+
+            if (fixedWidthConfiguration.getColumnNameLineNumber() != FixedWidthConfiguration.NO_COLUMN_NAME_LINE) {
+                zipWithIndex = zipWithIndex.filter(new SkipHeaderLineFunction(fixedWidthConfiguration
+                        .getColumnNameLineNumber()));
+            }
 
             return zipWithIndex.map(new ValuesToInputRowFunction(_sparkJobContext));
         } else if (datastore instanceof JdbcDatastore) {
@@ -233,8 +238,7 @@ public class SparkAnalysisRunner implements AnalysisRunner {
             final Column[] columns = openConnection.getDataContext().getDefaultSchema().getTable(0).getColumns();
             final List<StructField> fields = new ArrayList<>();
             for (Column column : columns) {
-                fields.add(DataTypes
-                        .createStructField(column.getName(), DataTypes.StringType, true));
+                fields.add(DataTypes.createStructField(column.getName(), DataTypes.StringType, true));
             }
             schema = DataTypes.createStructType(fields);
         }
