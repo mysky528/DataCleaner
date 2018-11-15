@@ -13,7 +13,7 @@
 		<scala.version>2.11.4</scala.version>
 		<slf4j.version>1.7.10</slf4j.version>
 		<junit.version>4.12</junit.version>
-		<hadoop.version>2.7.1</hadoop.version>
+		<hadoop.version>2.7.4</hadoop.version>
 		<spark.version>1.6.1</spark.version>
 		<easymock.version>3.4</easymock.version>
 		<httpcomponents.version>4.4.1</httpcomponents.version>
@@ -487,7 +487,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -500,7 +500,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -515,7 +515,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 							</pluginExecutions>
@@ -1038,7 +1038,7 @@
 			<dependency>
 				<groupId>org.apache.hive</groupId>
 				<artifactId>hive-jdbc</artifactId>
-				<version>1.2.1</version>
+				<version>3.0.0</version>
 				<exclusions>
 					<exclusion>
 						<groupId>jdk.tools</groupId>
