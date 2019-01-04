@@ -17,9 +17,9 @@
 		<spark.version>1.6.1</spark.version>
 		<easymock.version>3.4</easymock.version>
 		<httpcomponents.version>4.4.1</httpcomponents.version>
-		<guava.version>16.0.1</guava.version>
+		<guava.version>24.1.1-jre</guava.version>
 		<curator.version>2.6.0</curator.version>
-		<metamodel.version>5.0.1</metamodel.version>
+		<metamodel.version>5.2.0</metamodel.version>
 		<metamodel.extras.version>5.0.0</metamodel.extras.version>
 		<spring.core.version>4.1.9.RELEASE</spring.core.version>
 		<freemarker.version>2.3.22</freemarker.version>
@@ -487,7 +487,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -500,7 +500,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -515,7 +515,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 							</pluginExecutions>
