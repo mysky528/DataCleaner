@@ -12,7 +12,7 @@
 		<!-- Dependency versions -->
 		<scala.version>2.11.4</scala.version>
 		<slf4j.version>1.7.10</slf4j.version>
-		<junit.version>4.12</junit.version>
+		<junit.version>4.13.1</junit.version>
 		<hadoop.version>2.7.1</hadoop.version>
 		<spark.version>1.6.1</spark.version>
 		<easymock.version>3.4</easymock.version>
@@ -487,7 +487,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -500,7 +500,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -515,7 +515,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 							</pluginExecutions>
@@ -1352,7 +1352,7 @@
 			<dependency>
 				<groupId>io.rest-assured</groupId>
 				<artifactId>rest-assured</artifactId>
-				<version>3.0.1</version>
+				<version>3.2.0</version>
 			</dependency>
 			<dependency>
 				<groupId>org.scalatest</groupId>
