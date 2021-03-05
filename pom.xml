@@ -487,7 +487,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -500,7 +500,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 								<pluginExecution>
@@ -515,7 +515,7 @@
 										</goals>
 									</pluginExecutionFilter>
 									<action>
-										<ignore />
+										<ignore/>
 									</action>
 								</pluginExecution>
 							</pluginExecutions>
@@ -1352,7 +1352,7 @@
 			<dependency>
 				<groupId>io.rest-assured</groupId>
 				<artifactId>rest-assured</artifactId>
-				<version>3.0.1</version>
+				<version>4.3.3</version>
 			</dependency>
 			<dependency>
 				<groupId>org.scalatest</groupId>
